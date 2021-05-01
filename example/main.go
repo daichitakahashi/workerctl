@@ -17,12 +17,11 @@ func main() {
 	ctl := workerctl.New(context.Background())
 	abort := make(chan struct{})
 
-	_ = ctl.NewWorkerGroup("output", func(ctx context.Context, group *workerctl.WorkerGroup) (func(context.Context) error, error) {
-		var err error
-		var c workerctl.Closer
+	_ = ctl.NewWorkerGroup("output", func(ctx context.Context, group *workerctl.WorkerGroup) (_ func(context.Context) error, err error) {
+		var closer workerctl.Closer
 		defer func() {
 			if err != nil {
-				_ = c.Close()
+				_ = closer.Close(nil)
 			}
 		}()
 
@@ -30,20 +29,20 @@ func main() {
 		if err != nil {
 			return nil, err
 		}
-		c.Append(db.Close)
+		closer.Append(db)
 
 		redis, err := func() (closer io.Closer, err error) { return }()
 		if err != nil {
 			return nil, err
 		}
-		c.Append(redis.Close)
+		closer.Append(redis)
 
 		_ = group.NewJobRunner("log", func(ctx context.Context, runner *workerctl.JobRunner) (func(context.Context) error, error) {
 			return runner.Stop, nil
 		})
-		return func(ctx context.Context) error {
+		return func(ctx context.Context) (err error) {
 			defer func() {
-				_ = c.Close()
+				err = closer.Close(err)
 			}()
 			return group.Stop(ctx)
 		}, nil
@@ -64,7 +63,7 @@ func main() {
 				log.Println(err)
 				close(abort)
 			}
-		})
+		}, nil)
 
 		return func(ctx context.Context) error {
 			select {

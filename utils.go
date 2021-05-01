@@ -1,36 +1,43 @@
 package workerctl
 
-import "log"
+import "io"
 
 // Go :
-func Go(f func()) {
+func Go(fn func(), recovered func(v interface{})) {
 	go func() {
 		defer func() {
 			rvr := recover()
-			if rvr != nil {
-				// TODO: グローバルロガー
-				log.Println("workerctl: go:", rvr)
+			if rvr != nil && recovered != nil {
+				recovered(rvr)
 			}
 		}()
-		f()
+		fn()
 	}()
 }
 
 // Closer :
-type Closer []func() error
+type Closer []io.Closer
 
 // Append :
-func (c *Closer) Append(f func() error) {
-	*c = append(*c, f)
+func (c *Closer) Append(cl io.Closer) {
+	*c = append(*c, cl)
 }
 
-// Close :
-func (c *Closer) Close() (err error) {
-	for _, closeFn := range *c {
-		cerr := closeFn()
+func (c Closer) close() (err error) {
+	for _, closer := range c {
+		cerr := closer.Close()
 		if cerr != nil && err == nil {
 			err = cerr
 		}
 	}
 	return
+}
+
+// CLose :
+func (c Closer) Close(err error) error {
+	e := c.close()
+	if e != nil && err == nil {
+		err = e
+	}
+	return err
 }
