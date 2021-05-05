@@ -1,6 +1,9 @@
 package workerctl
 
-import "io"
+import (
+	"fmt"
+	"io"
+)
 
 // Go :
 func Go(fn func(), recovered func(v interface{})) {
@@ -13,6 +16,26 @@ func Go(fn func(), recovered func(v interface{})) {
 		}()
 		fn()
 	}()
+}
+
+type RecoveredError struct {
+	Recovered interface{}
+}
+
+func (e *RecoveredError) Error() string {
+	return fmt.Sprintf("recovered: %v", e.Recovered)
+}
+
+// PanicSafe :
+func PanicSafe(fn func() error) (err error) {
+	defer func() {
+		rvr := recover()
+		if rvr != nil {
+			err = &RecoveredError{rvr}
+		}
+	}()
+	err = fn()
+	return
 }
 
 // Closer :

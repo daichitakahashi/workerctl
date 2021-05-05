@@ -167,70 +167,13 @@ func (g *WorkerGroup) Stop(ctx context.Context, options ...ShutdownOption) error
 	return nil
 }
 
-/*
-err := ctl.NewWorkerGroup("main", func(ctx context.Context, group *workerctl.WorkerGroup) (func(context.Context), error) {
-	db, err := ConnectDB()
-	if err != nil {
-		return nil, err
-	}
-
-	_ = groupCtl.LaunchWorker("reservedMailSender", func(ctx context.Context) (<-chan error, error) {
-		done := make(chan error)
-		go func() {
-			done <- mail.SendReserveMail(ctx)
-		}()
-		return done, nil
-	})
-
-	return func(ctx context.Context) {
-		defer func() {
-			_ = db.Close()
-		}()
-		group.Stop(ctx, workerctl.WithOnWorkerShutdown(name string, err error) {
-			if err != nil {
-				log.Println("")
-			} else {
-				log.Println("")
-			}
-		})
-	}, nil
-})
-if err != nil {
-	ctl.Shutdown()
-	return
-}
-*/
-
 // JobRunner :
 type JobRunner struct {
-	err chan error
-	wg  sync.WaitGroup
-	log func(v ...interface{})
+	c            *Controller
+	err          chan error
+	wg           sync.WaitGroup
+	PanicHandler func(interface{})
 }
-
-/*
-ctl.NewJobRunner("import/admin", func(ctx context.Context, runner *workerctl.JobRunner) error {
-	return importctl.InitAdminImport(ctx, runner)
-})
-
-func IninAdminImport(ctx context.Context, runner *workerctl.JobRunner) error {
-
-}
-
-type importRunner struct{
-	ctx    context.Context
-	runner worerctl.JobRunner
-}
-
-func (r *importRunner) run(fn func(context.Context)) {
-	ctx, cancel := context.WithTimeout(r.ctx, time.Second * 30)
-	r.runner.Go(ctx, func(){
-		defer cancel()
-		fn(ctx)
-	})
-}
-
-*/
 
 // JobRunnerFunc :
 type JobRunnerFunc func(ctx context.Context, runner *JobRunner) (func(context.Context) error, error)
@@ -239,6 +182,7 @@ type JobRunnerFunc func(ctx context.Context, runner *JobRunner) (func(context.Co
 func (g *WorkerGroup) NewJobRunner(name string, fn JobRunnerFunc) error {
 	return g.launch(name, func(ctx context.Context) (<-chan error, error) {
 		runner := &JobRunner{
+			c:   g.c,
 			err: make(chan error),
 		}
 		onShutdown, err := fn(g.c.ctx, runner)
@@ -261,26 +205,28 @@ func (g *WorkerGroup) NewJobRunner(name string, fn JobRunnerFunc) error {
 }
 
 // Go :
-func (c *JobRunner) Go(ctx context.Context, w func(ctx context.Context)) {
-	c.wg.Add(1)
+func (r *JobRunner) Go(w func(ctx context.Context)) {
+	r.wg.Add(1)
 	go func() {
 		defer func() {
-			c.wg.Done()
-			rvr := recover()
-			if rvr != nil {
-				c.log("Job:", rvr)
+			r.wg.Done()
+			if r.PanicHandler != nil {
+				rvr := recover()
+				if rvr != nil {
+					r.PanicHandler(rvr)
+				}
 			}
 		}()
-		w(ctx)
+		w(r.c.ctx)
 	}()
 }
 
 // Stop :
-func (c *JobRunner) Stop(ctx context.Context) error {
+func (r *JobRunner) Stop(ctx context.Context) error {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		c.wg.Wait()
+		r.wg.Wait()
 	}()
 	select {
 	case <-ctx.Done():

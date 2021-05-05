@@ -3,6 +3,7 @@ package workerctl
 import (
 	"context"
 	"log"
+	"sync/atomic"
 	"time"
 )
 
@@ -12,11 +13,15 @@ type Controller struct {
 	cancel      context.CancelFunc
 	shutdownCtx context.Context
 	internal    *WorkerGroup
+	aborted     chan struct{}
+	abortState  int32
 }
 
 // New :
 func New(ctx context.Context) *Controller {
-	ctl := &Controller{}
+	ctl := &Controller{
+		aborted: make(chan struct{}),
+	}
 	ctl.ctx, ctl.cancel = context.WithCancel(ctx)
 	ctl.internal = &WorkerGroup{
 		c:       ctl,
@@ -45,9 +50,27 @@ func (c *Controller) NewJobRunner(name string, fn JobRunnerFunc) error {
 	return c.internal.NewJobRunner(name, fn)
 }
 
+func (c *Controller) Aborted() <-chan struct{} {
+	return c.aborted
+}
+
+func (c *Controller) Abort(err error) {
+	if err != nil {
+		_ = c.abort()
+	}
+}
+
+func (c *Controller) abort() (aborted bool) {
+	if atomic.SwapInt32(&c.abortState, 1) == 0 {
+		close(c.aborted)
+		aborted = true
+	}
+	return
+}
+
 const defaultPollInterval = time.Microsecond * 500
 
-// ShutdownCtx :
+// Shutdown :
 func (c *Controller) Shutdown(ctx context.Context, options ...ShutdownOption) error {
 	// apply options.
 	for _, opt := range options {
@@ -61,6 +84,11 @@ func (c *Controller) Shutdown(ctx context.Context, options ...ShutdownOption) er
 		c.shutdownCtx = context.Background()
 	}
 
+	select {
+	case <-c.ctx.Done():
+		return nil
+	default:
+	}
 	// cancel main context.
 	c.cancel()
 	go c.internal.Stop(ctx)

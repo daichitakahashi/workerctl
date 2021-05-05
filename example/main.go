@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"io"
+	"database/sql"
 	"log"
 	"net/http"
 	"os"
@@ -15,7 +15,6 @@ import (
 
 func main() {
 	ctl := workerctl.New(context.Background())
-	abort := make(chan struct{})
 
 	_ = ctl.NewWorkerGroup("output", func(ctx context.Context, group *workerctl.WorkerGroup) (_ func(context.Context) error, err error) {
 		var closer workerctl.Closer
@@ -25,17 +24,17 @@ func main() {
 			}
 		}()
 
-		db, err := func() (closer io.Closer, err error) { return }()
+		db, err := func() (conn *sql.Conn, err error) { return }()
 		if err != nil {
 			return nil, err
 		}
 		closer.Append(db)
 
-		redis, err := func() (closer io.Closer, err error) { return }()
+		dst, err := func() (file *os.File, err error) { return }()
 		if err != nil {
 			return nil, err
 		}
-		closer.Append(redis)
+		closer.Append(dst)
 
 		_ = group.NewJobRunner("log", func(ctx context.Context, runner *workerctl.JobRunner) (func(context.Context) error, error) {
 			return runner.Stop, nil
@@ -57,17 +56,20 @@ func main() {
 			Handler: mux,
 		}
 
-		workerctl.Go(func() {
-			err := svr.ListenAndServe()
-			if err != nil && err != http.ErrServerClosed {
-				log.Println(err)
-				close(abort)
-			}
-		}, nil)
+		// abort when ListenAndServe fail
+		go ctl.Abort(
+			workerctl.PanicSafe(func() error {
+				err := svr.ListenAndServe()
+				if err == http.ErrServerClosed {
+					return nil
+				}
+				return err
+			}),
+		)
 
 		return func(ctx context.Context) error {
 			select {
-			case <-abort:
+			case <-ctl.Aborted():
 				return nil
 			default:
 			}
@@ -81,7 +83,7 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT)
 
 	select {
-	case <-abort:
+	case <-ctl.Aborted():
 		log.Println("Aborted")
 	case <-quit:
 		log.Println("Signal received")
