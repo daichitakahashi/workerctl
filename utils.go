@@ -3,6 +3,7 @@ package workerctl
 import (
 	"fmt"
 	"io"
+	"sync/atomic"
 )
 
 // Go :
@@ -36,6 +37,29 @@ func PanicSafe(fn func() error) (err error) {
 	}()
 	err = fn()
 	return
+}
+
+type Abort struct {
+	aborted chan struct{}
+	state   int32
+}
+
+func NewAbort() *Abort {
+	return &Abort{
+		aborted: make(chan struct{}),
+	}
+}
+
+func (a *Abort) Abort(err error) {
+	if err != nil {
+		if atomic.SwapInt32(&a.state, 1) == 0 {
+			close(a.aborted)
+		}
+	}
+}
+
+func (a *Abort) Aborted() <-chan struct{} {
+	return a.aborted
 }
 
 // Closer :

@@ -2,7 +2,6 @@ package workerctl
 
 import (
 	"context"
-	"sync/atomic"
 	"time"
 )
 
@@ -15,15 +14,12 @@ type Controller struct {
 	cancel      context.CancelFunc
 	shutdownCtx context.Context
 	internal    *WorkerGroup
-	aborted     chan struct{}
-	abortState  int32
 	option      option
 }
 
 // New :
 func New(ctx context.Context, options ...Option) *Controller {
 	ctl := &Controller{
-		aborted: make(chan struct{}),
 		option: option{
 			pollInterval: DefaultPollInterval,
 		},
@@ -56,24 +52,6 @@ func (c *Controller) NewWorkerGroup(name string, fn WorkerGroupFunc) error {
 // NewJobRunner :
 func (c *Controller) NewJobRunner(name string, fn JobRunnerFunc) error {
 	return c.internal.NewJobRunner(name, fn)
-}
-
-func (c *Controller) Aborted() <-chan struct{} {
-	return c.aborted
-}
-
-func (c *Controller) Abort(err error) {
-	if err != nil {
-		_ = c.abort()
-	}
-}
-
-func (c *Controller) abort() (aborted bool) {
-	if atomic.SwapInt32(&c.abortState, 1) == 0 {
-		close(c.aborted)
-		aborted = true
-	}
-	return
 }
 
 // Shutdown :

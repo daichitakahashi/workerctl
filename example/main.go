@@ -15,6 +15,7 @@ import (
 
 func main() {
 	ctl := workerctl.New(context.Background())
+	a := workerctl.NewAbort()
 
 	_ = ctl.NewWorkerGroup("output", func(ctx context.Context, group *workerctl.WorkerGroup) (_ func(context.Context) error, err error) {
 		var closer workerctl.Closer
@@ -57,7 +58,7 @@ func main() {
 		}
 
 		// abort when ListenAndServe fail
-		go ctl.Abort(
+		go a.Abort(
 			workerctl.PanicSafe(func() error {
 				err := svr.ListenAndServe()
 				if err == http.ErrServerClosed {
@@ -69,7 +70,7 @@ func main() {
 
 		return func(ctx context.Context) error {
 			select {
-			case <-ctl.Aborted():
+			case <-a.Aborted():
 				return nil
 			default:
 			}
@@ -79,11 +80,11 @@ func main() {
 		}, nil
 	})
 
-	quit := make(chan os.Signal)
+	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT)
 
 	select {
-	case <-ctl.Aborted():
+	case <-a.Aborted():
 		log.Println("Aborted")
 	case <-quit:
 		log.Println("Signal received")
