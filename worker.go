@@ -17,7 +17,6 @@ type WorkerGroup struct {
 	ns      string
 	m       sync.Mutex
 	workers map[string]<-chan error
-	option  option
 }
 
 func (g *WorkerGroup) launch(name string, fn func(ctx context.Context) (<-chan error, error)) error {
@@ -98,9 +97,6 @@ func (g *WorkerGroup) NewWorkerGroup(name string, fn WorkerGroupFunc) error {
 			err:     make(chan error),
 			ns:      path.Join(g.ns, name),
 			workers: make(map[string]<-chan error),
-			option: option{
-				pollInterval: g.option.pollInterval,
-			},
 		}
 		onShutdown, err := fn(group.c.ctx, group)
 		if err != nil {
@@ -122,18 +118,13 @@ func (g *WorkerGroup) NewWorkerGroup(name string, fn WorkerGroupFunc) error {
 }
 
 // Stop :
-func (g *WorkerGroup) Stop(ctx context.Context, options ...ShutdownOption) error {
+func (g *WorkerGroup) Stop(ctx context.Context) error {
 	// prevent new worker after shutdown.
 	g.m.Lock()
 	defer g.m.Unlock()
 
-	// apply options.
-	for _, opt := range options {
-		opt(&g.option)
-	}
-
 	func() {
-		ticker := time.NewTicker(g.option.pollInterval)
+		ticker := time.NewTicker(g.c.option.pollInterval)
 		defer ticker.Stop()
 
 		for {
@@ -142,8 +133,8 @@ func (g *WorkerGroup) Stop(ctx context.Context, options ...ShutdownOption) error
 				case <-ctx.Done():
 					return
 				case err := <-done:
-					if g.option.onWorkerShutdown != nil {
-						g.option.onWorkerShutdown(name, err)
+					if g.c.option.onWorkerShutdown != nil {
+						g.c.option.onWorkerShutdown(name, err)
 					}
 					delete(g.workers, name)
 				default:

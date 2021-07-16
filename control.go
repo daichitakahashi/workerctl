@@ -2,10 +2,12 @@ package workerctl
 
 import (
 	"context"
-	"log"
 	"sync/atomic"
 	"time"
 )
+
+// DefaultPollInterval :
+const DefaultPollInterval = time.Millisecond * 50
 
 // Controller is worker controller.
 type Controller struct {
@@ -15,22 +17,28 @@ type Controller struct {
 	internal    *WorkerGroup
 	aborted     chan struct{}
 	abortState  int32
+	option      option
 }
 
 // New :
-func New(ctx context.Context) *Controller {
+func New(ctx context.Context, options ...Option) *Controller {
 	ctl := &Controller{
 		aborted: make(chan struct{}),
+		option: option{
+			pollInterval: DefaultPollInterval,
+		},
 	}
 	ctl.ctx, ctl.cancel = context.WithCancel(ctx)
+
+	// apply options.
+	for _, opt := range options {
+		opt(&ctl.option)
+	}
+
 	ctl.internal = &WorkerGroup{
 		c:       ctl,
 		err:     make(chan error),
 		workers: make(map[string]<-chan error),
-		option: option{
-			pollInterval: defaultPollInterval,
-			log:          log.Println,
-		},
 	}
 	return ctl
 }
@@ -68,15 +76,8 @@ func (c *Controller) abort() (aborted bool) {
 	return
 }
 
-const defaultPollInterval = time.Microsecond * 500
-
 // Shutdown :
-func (c *Controller) Shutdown(ctx context.Context, options ...ShutdownOption) error {
-	// apply options.
-	for _, opt := range options {
-		opt(&c.internal.option)
-	}
-
+func (c *Controller) Shutdown(ctx context.Context) error {
 	// set shutdown context.
 	if ctx != nil {
 		c.shutdownCtx = ctx
@@ -99,14 +100,13 @@ func (c *Controller) Shutdown(ctx context.Context, options ...ShutdownOption) er
 type option struct {
 	pollInterval     time.Duration
 	onWorkerShutdown func(name string, err error)
-	log              func(v ...interface{})
 }
 
-// ShutdownOption :
-type ShutdownOption func(*option)
+// Option :
+type Option func(*option)
 
 // PollInterval :
-func PollInterval(d time.Duration) ShutdownOption {
+func PollInterval(d time.Duration) Option {
 	return func(o *option) {
 		if d >= 0 {
 			o.pollInterval = d
@@ -115,15 +115,8 @@ func PollInterval(d time.Duration) ShutdownOption {
 }
 
 // OnWorkerShutdown :
-func OnWorkerShutdown(fn func(name string, err error)) ShutdownOption {
+func OnWorkerShutdown(fn func(name string, err error)) Option {
 	return func(o *option) {
 		o.onWorkerShutdown = fn
-	}
-}
-
-// LogFunc :
-func LogFunc(f func(v ...interface{})) ShutdownOption {
-	return func(o *option) {
-		o.log = f
 	}
 }
