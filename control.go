@@ -68,15 +68,13 @@ func (c *Controller) Shutdown(ctx context.Context) error {
 	}
 
 	select {
-	case <-c.ctx.Done():
-		return nil
+	case <-c.shutdownCtx.Done():
+		return c.shutdownCtx.Err()
 	default:
 	}
 	// cancel main context.
 	c.cancel()
-	go c.internal.Stop(ctx)
-
-	return <-c.internal.err
+	return c.internal.Wait(c.shutdownCtx)
 }
 
 type option struct {
