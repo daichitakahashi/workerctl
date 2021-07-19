@@ -53,7 +53,7 @@ func goWithRecover(fn func(), done chan error) {
 		defer func() {
 			rvr := recover()
 			if rvr != nil {
-				done <- fmt.Errorf("%v", rvr)
+				done <- &RecoveredError{Recovered: rvr}
 			}
 		}()
 		fn()
@@ -64,11 +64,11 @@ func goWithRecover(fn func(), done chan error) {
 type WorkerFunc func(ctx context.Context) (onShutdown func(context.Context) error, err error)
 
 // NewWorker :
-func (g *WorkerGroup) NewWorker(name string, fn WorkerFunc) error {
+func (g *WorkerGroup) NewWorker(name string, init WorkerFunc) error {
 	return g.launch(name, func(ctx context.Context) (<-chan error, error) {
-		done := make(chan error)
+		done := make(chan error, 1)
 
-		onShutdown, err := fn(g.c.ctx)
+		onShutdown, err := init(g.c.ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -91,7 +91,7 @@ func (g *WorkerGroup) NewWorker(name string, fn WorkerFunc) error {
 type WorkerGroupFunc func(ctx context.Context, group *WorkerGroup) (onShutdown func(ctx context.Context) error, err error)
 
 // NewWorkerGroup :
-func (g *WorkerGroup) NewWorkerGroup(name string, fn WorkerGroupFunc) error {
+func (g *WorkerGroup) NewWorkerGroup(name string, init WorkerGroupFunc) error {
 	return g.launch(name, func(ctx context.Context) (<-chan error, error) {
 		group := &WorkerGroup{
 			c:       g.c,
@@ -99,7 +99,7 @@ func (g *WorkerGroup) NewWorkerGroup(name string, fn WorkerGroupFunc) error {
 			ns:      path.Join(g.ns, name),
 			workers: make(map[string]<-chan error),
 		}
-		onShutdown, err := fn(group.c.ctx, group)
+		onShutdown, err := init(group.c.ctx, group)
 		if err != nil {
 			return nil, err
 		}
@@ -118,8 +118,8 @@ func (g *WorkerGroup) NewWorkerGroup(name string, fn WorkerGroupFunc) error {
 	})
 }
 
-// Stop :
-func (g *WorkerGroup) Stop(ctx context.Context) error {
+// Wait :
+func (g *WorkerGroup) Wait(ctx context.Context) error {
 	// prevent new worker after shutdown.
 	g.m.Lock()
 	defer g.m.Unlock()
@@ -177,13 +177,13 @@ type JobRunner struct {
 type JobRunnerFunc func(ctx context.Context, runner *JobRunner) (func(context.Context) error, error)
 
 // NewJobRunner :
-func (g *WorkerGroup) NewJobRunner(name string, fn JobRunnerFunc) error {
+func (g *WorkerGroup) NewJobRunner(name string, init JobRunnerFunc) error {
 	return g.launch(name, func(ctx context.Context) (<-chan error, error) {
 		runner := &JobRunner{
 			c:   g.c,
 			err: make(chan error),
 		}
-		onShutdown, err := fn(g.c.ctx, runner)
+		onShutdown, err := init(g.c.ctx, runner)
 		if err != nil {
 			return nil, err
 		}
@@ -219,8 +219,8 @@ func (r *JobRunner) Go(w func(ctx context.Context)) {
 	}()
 }
 
-// Stop :
-func (r *JobRunner) Stop(ctx context.Context) error {
+// Wait :
+func (r *JobRunner) Wait(ctx context.Context) error {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
