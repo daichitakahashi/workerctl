@@ -13,11 +13,12 @@ const DefaultSeparator = "/"
 
 // Controller is worker controller.
 type Controller struct {
-	ctx         context.Context
-	cancel      context.CancelFunc
-	shutdownCtx context.Context
-	internal    *WorkerGroup
-	option      option
+	ctx              context.Context
+	cancel           context.CancelFunc
+	shutdownCtx      context.Context
+	internal         *WorkerGroup
+	option           option
+	OnWorkerShutdown func(name string, err error)
 }
 
 // New :
@@ -72,15 +73,16 @@ func (c *Controller) Shutdown(ctx context.Context) error {
 		return c.shutdownCtx.Err()
 	default:
 	}
+	c.internal.OnWorkerShutdown = c.OnWorkerShutdown
+
 	// cancel main context.
 	c.cancel()
 	return c.internal.Wait(c.shutdownCtx)
 }
 
 type option struct {
-	pollInterval     time.Duration
-	sep              string
-	onWorkerShutdown func(name string, err error)
+	pollInterval time.Duration
+	sep          string
 }
 
 // Option :
@@ -99,12 +101,5 @@ func PollInterval(d time.Duration) Option {
 func NamespaceSeparator(sep string) Option {
 	return func(o *option) {
 		o.sep = sep
-	}
-}
-
-// OnWorkerShutdown :
-func OnWorkerShutdown(fn func(name string, err error)) Option {
-	return func(o *option) {
-		o.onWorkerShutdown = fn
 	}
 }

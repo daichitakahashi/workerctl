@@ -12,11 +12,12 @@ import (
 
 // WorkerGroup :
 type WorkerGroup struct {
-	c       *Controller
-	err     chan error
-	ns      string
-	m       sync.Mutex
-	workers map[string]<-chan error
+	c                *Controller
+	err              chan error
+	ns               string
+	m                sync.Mutex
+	workers          map[string]<-chan error
+	OnWorkerShutdown func(name string, err error)
 }
 
 func (g *WorkerGroup) launch(name string, fn func(ctx context.Context) (<-chan error, error)) error {
@@ -123,6 +124,8 @@ func (g *WorkerGroup) Stop(ctx context.Context) error {
 	g.m.Lock()
 	defer g.m.Unlock()
 
+	failed := make([]string, 0, len(g.workers))
+
 	func() {
 		ticker := time.NewTicker(g.c.option.pollInterval)
 		defer ticker.Stop()
@@ -133,10 +136,13 @@ func (g *WorkerGroup) Stop(ctx context.Context) error {
 				case <-ctx.Done():
 					return
 				case err := <-done:
-					if g.c.option.onWorkerShutdown != nil {
-						g.c.option.onWorkerShutdown(name, err)
+					if err != nil {
+						failed = append(failed, name)
 					}
 					delete(g.workers, name)
+					if g.OnWorkerShutdown != nil {
+						g.OnWorkerShutdown(name, err)
+					}
 				default:
 					// continue
 				}
@@ -148,12 +154,13 @@ func (g *WorkerGroup) Stop(ctx context.Context) error {
 		}
 	}()
 
-	if len(g.workers) > 0 {
-		remains := make([]string, 0, len(g.workers))
+	if len(failed)+len(g.workers) > 0 {
+		remains := make([]string, 0, len(failed)+len(g.workers))
+		remains = append(remains, failed...)
 		for name := range g.workers {
 			remains = append(remains, name)
 		}
-		return fmt.Errorf("some worker still working: %s", strings.Join(remains, ", "))
+		return fmt.Errorf("some worker still working or shutdown failed: %s", strings.Join(remains, ", "))
 	}
 	return nil
 }
