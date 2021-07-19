@@ -23,7 +23,7 @@ func (g *WorkerGroup) launch(name string, fn func(ctx context.Context) (<-chan e
 	g.m.Lock()
 	defer g.m.Unlock()
 
-	// prevent Launch after Shutdown.
+	// prevent launch after Shutdown.
 	select {
 	case <-g.c.ctx.Done():
 		return g.c.ctx.Err()
@@ -31,7 +31,7 @@ func (g *WorkerGroup) launch(name string, fn func(ctx context.Context) (<-chan e
 	}
 
 	if g.ns != "" {
-		name = path.Join(g.ns, name)
+		name = path.Join(g.ns, g.c.option.sep, name)
 	}
 
 	if _, ok := g.workers[name]; ok {

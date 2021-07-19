@@ -8,6 +8,9 @@ import (
 // DefaultPollInterval :
 const DefaultPollInterval = time.Millisecond * 50
 
+// DefaultSeparator :
+const DefaultSeparator = "/"
+
 // Controller is worker controller.
 type Controller struct {
 	ctx         context.Context
@@ -22,6 +25,7 @@ func New(ctx context.Context, options ...Option) *Controller {
 	ctl := &Controller{
 		option: option{
 			pollInterval: DefaultPollInterval,
+			sep:          DefaultSeparator,
 		},
 	}
 	ctl.ctx, ctl.cancel = context.WithCancel(ctx)
@@ -77,6 +81,7 @@ func (c *Controller) Shutdown(ctx context.Context) error {
 
 type option struct {
 	pollInterval     time.Duration
+	sep              string
 	onWorkerShutdown func(name string, err error)
 }
 
@@ -86,9 +91,16 @@ type Option func(*option)
 // PollInterval :
 func PollInterval(d time.Duration) Option {
 	return func(o *option) {
-		if d >= 0 {
+		if d > 0 {
 			o.pollInterval = d
 		}
+	}
+}
+
+// NamespaceSeparator :
+func NamespaceSeparator(sep string) Option {
+	return func(o *option) {
+		o.sep = sep
 	}
 }
 
