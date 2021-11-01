@@ -50,11 +50,15 @@ func NewAbort() *Abort {
 	}
 }
 
-func (a *Abort) Abort(err error) {
+func (a *Abort) Abort() {
+	if atomic.SwapInt32(&a.state, 1) == 0 {
+		close(a.aborted)
+	}
+}
+
+func (a *Abort) AbortOnError(err error) {
 	if err != nil {
-		if atomic.SwapInt32(&a.state, 1) == 0 {
-			close(a.aborted)
-		}
+		a.Abort()
 	}
 }
 
@@ -65,12 +69,8 @@ func (a *Abort) Aborted() <-chan struct{} {
 // Closer :
 type Closer []io.Closer
 
-// Append :
-func (c *Closer) Append(cl io.Closer) {
-	*c = append(*c, cl)
-}
-
-func (c Closer) close() (err error) {
+// Close :
+func (c Closer) Close() (err error) {
 	last := len(c) - 1
 	for i := range c {
 		e := c[last-i].Close()
@@ -81,11 +81,8 @@ func (c Closer) close() (err error) {
 	return
 }
 
-// Close :
-func (c Closer) Close(err error) error {
-	e := c.close()
-	if e != nil && err == nil {
-		err = e
-	}
-	return err
+type CloseFunc func() error
+
+func (c CloseFunc) Close() error {
+	return c()
 }
