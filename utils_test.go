@@ -55,14 +55,14 @@ func TestNewAbort_Abort(t *testing.T) {
 	default:
 	}
 
-	a.Abort(nil)
+	a.AbortOnError(nil)
 	select {
 	case <-a.Aborted():
 		t.Error("unexpected abort")
 	default:
 	}
 
-	a.Abort(errors.New("abort"))
+	a.AbortOnError(errors.New("abort"))
 	select {
 	case <-a.Aborted():
 	default:
@@ -73,32 +73,26 @@ func TestNewAbort_Abort(t *testing.T) {
 func TestCloser_Close(t *testing.T) {
 	var closer Closer
 	log := &bytes.Buffer{}
-	closer.Append(&closePrinter{
+	closer = append(closer, &closePrinter{
 		log: log,
 		msg: "first",
 	})
-	closer.Append(&closePrinter{
+	closer = append(closer, &closePrinter{
 		log: log,
 		msg: "second",
 	})
-	closer.Append(&closePrinter{
+	closer = append(closer, &closePrinter{
 		log: log,
 		msg: "third",
 	})
 
-	err := closer.Close(nil)
+	err := closer.Close()
 	if err == nil || err.Error() != "third" {
 		t.Error("unexpected error", err)
 		return
 	} else if log.String() != "third->second->first->" {
 		t.Error("unexpected calling order of Close")
 		return
-	}
-
-	e := errors.New("error")
-	err = closer.Close(e)
-	if err != e {
-		t.Error("unexpected error", err)
 	}
 }
 
