@@ -7,22 +7,21 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 
 	"github.com/daichitakahashi/workerctl"
 )
 
 type Server struct {
-	svr *http.Server
-	o   *OneShotTaskRunner
-	a   *workerctl.Abort
-	w   io.Writer
+	OneShot *OneShotTaskRunner
+	Writer  io.Writer
 }
 
-func (s *Server) Init(_ context.Context) error {
+func (s *Server) LaunchWorker(ctx context.Context) (func(context.Context), error) {
 	mux := http.NewServeMux()
 	mux.Handle("/report", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = fmt.Fprintf(s.w, "%s report\n", r.Method)
+		_, _ = fmt.Fprintf(s.Writer, "%s report\n", r.Method)
 
 		if r.Method != http.MethodPost {
 			http.Error(w, "unavailable", http.StatusMethodNotAllowed)
@@ -38,22 +37,39 @@ func (s *Server) Init(_ context.Context) error {
 			"message": "received",
 		})
 
-		s.o.Report(string(message))
+		s.OneShot.Report(string(message))
 	}))
 
 	mux.Handle("/abort", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = fmt.Fprintln(s.w, "abort!")
-		s.a.Abort()
+		_, _ = fmt.Fprintln(s.Writer, "abort!")
+		workerctl.Abort(ctx)
 	}))
 
-	s.svr = &http.Server{Handler: mux}
-
-	return nil
-}
-
-func (s *Server) Shutdown(ctx context.Context) {
-	err := s.svr.Shutdown(ctx)
-	if err != nil {
-		log.Println(err)
+	svr := &http.Server{
+		Addr:    ":8080",
+		Handler: mux,
 	}
+	svr.BaseContext = func(_ net.Listener) context.Context {
+		return ctx
+	}
+
+	go func() {
+		err := workerctl.PanicSafe(func() error {
+			return svr.ListenAndServe()
+		})
+		if err != nil && err != http.ErrServerClosed {
+			log.Println(err)
+			workerctl.Abort(ctx)
+		}
+	}()
+
+	// stop func
+	return func(ctx context.Context) {
+		err := svr.Shutdown(ctx)
+		if err != nil {
+			log.Println(err)
+		}
+	}, nil
 }
+
+var _ workerctl.WorkerLauncher = (*Server)(nil)

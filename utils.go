@@ -3,21 +3,8 @@ package workerctl
 import (
 	"fmt"
 	"io"
-	"sync/atomic"
+	"sync"
 )
-
-// Go :
-func Go(fn func(), recovered func(v interface{})) {
-	go func() {
-		defer func() {
-			rvr := recover()
-			if rvr != nil && recovered != nil {
-				recovered(rvr)
-			}
-		}()
-		fn()
-	}()
-}
 
 type RecoveredError struct {
 	Recovered interface{}
@@ -39,31 +26,38 @@ func PanicSafe(fn func() error) (err error) {
 	return
 }
 
-type Abort struct {
-	aborted chan struct{}
-	state   int32
+// Aborter :
+type Aborter struct {
+	ch     chan struct{}
+	mu     sync.Mutex
+	closed bool
 }
 
-func NewAbort() *Abort {
-	return &Abort{
-		aborted: make(chan struct{}),
+func (a *Aborter) aborted() chan struct{} {
+	if a.ch == nil {
+		a.ch = make(chan struct{})
+	}
+	return a.ch
+}
+
+func (a *Aborter) Aborted() <-chan struct{} {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.aborted()
+}
+
+func (a *Aborter) Abort() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.closed {
+		close(a.aborted())
 	}
 }
 
-func (a *Abort) Abort() {
-	if atomic.SwapInt32(&a.state, 1) == 0 {
-		close(a.aborted)
-	}
-}
-
-func (a *Abort) AbortOnError(err error) {
+func (a *Aborter) AbortOnError(err error) {
 	if err != nil {
 		a.Abort()
 	}
-}
-
-func (a *Abort) Aborted() <-chan struct{} {
-	return a.aborted
 }
 
 // Closer :
@@ -79,10 +73,4 @@ func (c Closer) Close() (err error) {
 		}
 	}
 	return
-}
-
-type CloseFunc func() error
-
-func (c CloseFunc) Close() error {
-	return c()
 }

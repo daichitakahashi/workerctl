@@ -10,9 +10,9 @@ type (
 	Controller interface {
 		Dependent() Controller
 
-		// NewWorker register Worker to Controller and call Worker.Init.
-		// Return error when Init cause error.
-		NewWorker(worker Worker) error
+		// Launch register WorkerLauncher to Controller and call it.
+		// Return error when LaunchWorker cause error.
+		Launch(l WorkerLauncher) error
 
 		// Bind resource to Controller.
 		// After completion of controller's shutdown, resources are to be closed.
@@ -28,18 +28,22 @@ type (
 
 	ShutdownFunc func(ctx context.Context) error
 
-	Worker interface {
-		Init(ctx context.Context) error
-		Shutdown(ctx context.Context)
+	WorkerLauncher interface {
+		LaunchWorker(ctx context.Context) (stop func(ctx context.Context), err error)
 	}
+
+	WorkerLauncherFunc func(ctx context.Context) (stop func(ctx context.Context), err error)
 )
+
+func (l WorkerLauncherFunc) LaunchWorker(ctx context.Context) (stop func(ctx context.Context), err error) {
+	return l(ctx)
+}
 
 type root struct {
 	*controller
-	shutdownCtx    context.Context
-	shutdownCancel context.CancelFunc
-	shutdownOnce   sync.Once
-	determined     chan struct{}
+	shutdownCtx  context.Context
+	shutdownOnce sync.Once
+	determined   chan struct{}
 }
 
 func New(ctx context.Context) (Controller, ShutdownFunc) {
@@ -56,10 +60,7 @@ func New(ctx context.Context) (Controller, ShutdownFunc) {
 
 	return r, func(ctx context.Context) error {
 		// determine shutdown context.
-		shutdownCtx, shutdownCancel := r.determineShutdownContext(ctx)
-		if shutdownCancel != nil {
-			defer shutdownCancel()
-		}
+		shutdownCtx := r.determineShutdownContext(ctx)
 
 		// cancel main context.
 		cancel()
@@ -76,18 +77,34 @@ func New(ctx context.Context) (Controller, ShutdownFunc) {
 
 type key int8
 
-func WithDefaultShutdownContext(ctx context.Context, newShutdownCtx func() (context.Context, context.CancelFunc)) context.Context {
-	return context.WithValue(ctx, key(1), newShutdownCtx)
+const (
+	defaultShutdownKey key = iota + 1
+	abortKey
+)
+
+func WithDefaultShutdownContext(ctx context.Context, newShutdownCtx func(ctx context.Context) context.Context) context.Context {
+	return context.WithValue(ctx, defaultShutdownKey, newShutdownCtx)
 }
 
-func (r *root) determineShutdownContext(ctx context.Context) (context.Context, context.CancelFunc) {
+func WithAbort(ctx context.Context, a *Aborter) context.Context {
+	return context.WithValue(ctx, abortKey, a)
+}
+
+func Abort(ctx context.Context) {
+	v := ctx.Value(abortKey)
+	if v != nil {
+		v.(*Aborter).Abort()
+	}
+}
+
+func (r *root) determineShutdownContext(ctx context.Context) context.Context {
 	r.shutdownOnce.Do(func() {
 		if ctx != nil {
 			r.shutdownCtx = ctx
 		} else {
-			v := r.ctx.Value(key(1))
-			if newShutdownCtx, ok := v.(func() (context.Context, context.CancelFunc)); ok {
-				r.shutdownCtx, r.shutdownCancel = newShutdownCtx()
+			v := r.ctx.Value(defaultShutdownKey)
+			if newShutdownCtx, ok := v.(func(context.Context) context.Context); ok {
+				r.shutdownCtx = newShutdownCtx(context.Background())
 			} else {
 				r.shutdownCtx = context.Background()
 			}
@@ -95,7 +112,7 @@ func (r *root) determineShutdownContext(ctx context.Context) (context.Context, c
 		close(r.determined)
 	})
 	<-r.determined
-	return r.shutdownCtx, r.shutdownCancel
+	return r.shutdownCtx
 }
 
 var _ Controller = (*root)(nil)
@@ -120,7 +137,7 @@ func (c *controller) wait() <-chan struct{} {
 	return done
 }
 
-func (c *controller) NewWorker(worker Worker) error {
+func (c *controller) Launch(l WorkerLauncher) error {
 	c.m.Lock()
 	defer c.m.Unlock()
 
@@ -131,20 +148,21 @@ func (c *controller) NewWorker(worker Worker) error {
 	default:
 	}
 
-	err := worker.Init(c.ctx)
+	stop, err := l.LaunchWorker(c.ctx)
 	if err != nil {
 		return err
 	}
 
 	c.wg.Add(1)
-	Go(func() {
+	go PanicSafe(func() error {
 		defer c.wg.Done()
 		select {
 		case <-c.ctx.Done():
-			ctx, _ := c.root.determineShutdownContext(nil)
-			worker.Shutdown(ctx)
+			ctx := c.root.determineShutdownContext(nil)
+			stop(ctx)
 		}
-	}, nil)
+		return nil
+	})
 	return nil
 }
 
@@ -156,13 +174,14 @@ func (c *controller) Dependent() Controller {
 		wg:           &sync.WaitGroup{},
 	}
 	ctl.dependentsWg.Add(1)
-	Go(func() {
+	go PanicSafe(func() error {
 		defer c.dependentsWg.Done()
 		select {
 		case <-c.ctx.Done():
 			<-ctl.wait()
 		}
-	}, nil)
+		return nil
+	})
 	return ctl
 }
 

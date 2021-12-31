@@ -13,9 +13,10 @@ import (
 
 func main() {
 	ctx := context.Background()
+	a := &workerctl.Aborter{}
+	ctx = workerctl.WithAbort(ctx, a)
 
 	ctl, shutdown := workerctl.New(ctx)
-	a := workerctl.NewAbort()
 
 	a.AbortOnError(func() (err error) {
 		// 1. Init shared resource and bind to this Controller.
@@ -28,9 +29,9 @@ func main() {
 
 		// 2. Start OneShotTaskRunner.
 		oneShot := &OneShotTaskRunner{
-			w: logOutput,
+			Writer: logOutput,
 		}
-		err = ctl.NewWorker(oneShot)
+		err = ctl.Launch(oneShot)
 		if err != nil {
 			return err
 		}
@@ -38,11 +39,12 @@ func main() {
 		{
 			// 3. Create Controller depends on ctl and start Server.
 			ctl := ctl.Dependent()
-			err := ctl.NewWorker(&Server{
-				o: oneShot,
-				a: a,
-				w: logOutput,
-			})
+
+			server := &Server{
+				OneShot: oneShot,
+				Writer:  logOutput,
+			}
+			err := ctl.Launch(server)
 			if err != nil {
 				return err
 			}
