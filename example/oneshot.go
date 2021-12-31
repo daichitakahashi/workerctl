@@ -10,18 +10,29 @@ import (
 )
 
 type OneShotTaskRunner struct {
-	r    *workerctl.JobRunner
-	conn net.Conn
-	w    io.Writer
+	r      *workerctl.JobRunner
+	conn   net.Conn
+	Writer io.Writer
 }
 
-func (o *OneShotTaskRunner) Init(_ context.Context) error {
+func (o *OneShotTaskRunner) LaunchWorker(_ context.Context) (func(context.Context), error) {
 	conn, err := net.Dial("tcp", "*.*.*.*")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	o.conn = conn
-	return nil
+	o.r = &workerctl.JobRunner{}
+
+	// stop func
+	return func(ctx context.Context) {
+		defer func() {
+			_ = o.conn.Close()
+		}()
+		err := o.r.Wait(ctx)
+		if err != nil {
+			_, _ = fmt.Fprintf(o.Writer, "OneShotTaskRunner.Shutdown: %s\n", err)
+		}
+	}, nil
 }
 
 func (o *OneShotTaskRunner) Report(message string) {
@@ -29,7 +40,7 @@ func (o *OneShotTaskRunner) Report(message string) {
 		var err error
 		defer func() {
 			if err != nil {
-				_, _ = fmt.Fprintf(o.w, "OneShotTaskRunner.Report: %s\n", err)
+				_, _ = fmt.Fprintf(o.Writer, "OneShotTaskRunner.Report: %s\n", err)
 			}
 		}()
 
@@ -59,15 +70,3 @@ func (o *OneShotTaskRunner) Report(message string) {
 		}
 	})
 }
-
-func (o *OneShotTaskRunner) Shutdown(ctx context.Context) {
-	defer func() {
-		_ = o.conn.Close()
-	}()
-	err := o.r.Wait(ctx)
-	if err != nil {
-		_, _ = fmt.Fprintf(o.w, "OneShotTaskRunner.Shutdown: %s\n", err)
-	}
-}
-
-var _ workerctl.Worker = (*OneShotTaskRunner)(nil)

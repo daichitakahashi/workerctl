@@ -6,26 +6,6 @@ import (
 	"testing"
 )
 
-func TestGo(t *testing.T) {
-	done := make(chan struct{})
-	Go(func() {
-		done <- struct{}{}
-	}, func(v interface{}) {
-		t.Error("not expected recover call")
-	})
-	<-done
-
-	Go(func() {
-		panic("panic")
-	}, func(v interface{}) {
-		if s, ok := v.(string); !ok || s != "panic" {
-			t.Error("not expected panic")
-		}
-		done <- struct{}{}
-	})
-	<-done
-}
-
 func TestPanicSafe(t *testing.T) {
 	e := errors.New("error")
 	err := PanicSafe(func() error {
@@ -47,8 +27,8 @@ func TestPanicSafe(t *testing.T) {
 	}
 }
 
-func TestNewAbort_Abort(t *testing.T) {
-	a := NewAbort()
+func TestAborter(t *testing.T) {
+	var a Aborter
 	select {
 	case <-a.Aborted():
 		t.Error("unexpected abort")
