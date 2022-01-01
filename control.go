@@ -128,12 +128,13 @@ type controller struct {
 
 func (c *controller) wait() <-chan struct{} {
 	done := make(chan struct{})
-	go func() {
+	go PanicSafe(func() error {
 		defer close(done)
 		c.dependentsWg.Wait()
 		c.wg.Wait()
 		_ = c.rcs.Close()
-	}()
+		return nil
+	})
 	return done
 }
 
