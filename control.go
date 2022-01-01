@@ -167,22 +167,22 @@ func (c *controller) Launch(l WorkerLauncher) error {
 }
 
 func (c *controller) Dependent() Controller {
-	ctl := &controller{
+	dependent := &controller{
 		root:         c.root,
 		ctx:          c.ctx,
 		dependentsWg: &sync.WaitGroup{},
 		wg:           &sync.WaitGroup{},
 	}
-	ctl.dependentsWg.Add(1)
+	c.dependentsWg.Add(1)
 	go PanicSafe(func() error {
 		defer c.dependentsWg.Done()
 		select {
 		case <-c.ctx.Done():
-			<-ctl.wait()
+			<-dependent.wait()
 		}
 		return nil
 	})
-	return ctl
+	return dependent
 }
 
 func (c *controller) Bind(rc io.Closer) {
