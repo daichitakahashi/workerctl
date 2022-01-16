@@ -7,24 +7,32 @@ import (
 
 type JobRunner struct {
 	wg           sync.WaitGroup
-	PanicHandler func(interface{})
+	PanicHandler func(v interface{})
 }
 
 // Run :
 func (r *JobRunner) Run(fn func()) {
 	r.wg.Add(1)
-	go func() {
-		defer func() {
-			r.wg.Done()
-			if r.PanicHandler != nil {
-				rvr := recover()
-				if rvr != nil {
-					r.PanicHandler(rvr)
-				}
+	r.run(fn)
+}
+
+// Go :
+func (r *JobRunner) Go(fn func()) {
+	r.wg.Add(1)
+	go r.run(fn)
+}
+
+func (r *JobRunner) run(fn func()) {
+	defer func() {
+		r.wg.Done()
+		if r.PanicHandler != nil {
+			rvr := recover()
+			if rvr != nil {
+				r.PanicHandler(rvr)
 			}
-		}()
-		fn()
+		}
 	}()
+	fn()
 }
 
 // Wait :

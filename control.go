@@ -47,16 +47,25 @@ type root struct {
 }
 
 func New(ctx context.Context) (Controller, ShutdownFunc) {
-	ctx, cancel := context.WithCancel(ctx)
+	parentCtx, cancel := context.WithCancel(ctx)
 	r := &root{
 		determined: make(chan struct{}),
 	}
 	r.controller = &controller{
 		root:         r,
-		ctx:          ctx,
+		ctx:          parentCtx,
 		dependentsWg: &sync.WaitGroup{},
 		wg:           &sync.WaitGroup{},
+		shutdown:     make(chan struct{}),
 	}
+
+	done := make(chan struct{})
+	go PanicSafe(func() error {
+		<-parentCtx.Done()
+		<-r.wait()
+		close(done)
+		return nil
+	})
 
 	return r, func(ctx context.Context) error {
 		// determine shutdown context.
@@ -65,13 +74,13 @@ func New(ctx context.Context) (Controller, ShutdownFunc) {
 		// cancel main context.
 		cancel()
 
-		var err error
 		select {
 		case <-shutdownCtx.Done():
-			err = shutdownCtx.Err()
-		case <-r.wait():
+			return shutdownCtx.Err()
+		case <-parentCtx.Done():
+			<-done
 		}
-		return err
+		return nil
 	}
 }
 
@@ -122,6 +131,7 @@ type controller struct {
 	ctx          context.Context
 	dependentsWg *sync.WaitGroup
 	wg           *sync.WaitGroup
+	shutdown     chan struct{}
 	rcs          Closer
 	m            sync.Mutex
 }
@@ -131,6 +141,7 @@ func (c *controller) wait() <-chan struct{} {
 	go PanicSafe(func() error {
 		defer close(done)
 		c.dependentsWg.Wait()
+		close(c.shutdown)
 		c.wg.Wait()
 		_ = c.rcs.Close()
 		return nil
@@ -158,7 +169,7 @@ func (c *controller) Launch(l WorkerLauncher) error {
 	go PanicSafe(func() error {
 		defer c.wg.Done()
 		select {
-		case <-c.ctx.Done():
+		case <-c.shutdown:
 			ctx := c.root.determineShutdownContext(nil)
 			stop(ctx)
 		}
@@ -173,6 +184,7 @@ func (c *controller) Dependent() Controller {
 		ctx:          c.ctx,
 		dependentsWg: &sync.WaitGroup{},
 		wg:           &sync.WaitGroup{},
+		shutdown:     make(chan struct{}),
 	}
 	c.dependentsWg.Add(1)
 	go PanicSafe(func() error {

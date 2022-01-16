@@ -1,9 +1,10 @@
 package workerctl
 
 import (
-	"bytes"
 	"errors"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestPanicSafe(t *testing.T) {
@@ -51,37 +52,39 @@ func TestAborter(t *testing.T) {
 }
 
 func TestCloser_Close(t *testing.T) {
+	r := recorder{t: t}
+
 	var closer Closer
-	log := &bytes.Buffer{}
-	closer = append(closer, &closePrinter{
-		log: log,
-		msg: "first",
-	})
-	closer = append(closer, &closePrinter{
-		log: log,
-		msg: "second",
-	})
-	closer = append(closer, &closePrinter{
-		log: log,
-		msg: "third",
-	})
+	closer = append(closer, dummyCloser(func() error {
+		msg := "first"
+		r.record(msg)
+		return errors.New(msg)
+	}))
+	closer = append(closer, dummyCloser(func() error {
+		msg := "second"
+		r.record(msg)
+		return errors.New(msg)
+	}))
+	closer = append(closer, dummyCloser(func() error {
+		msg := "third"
+		r.record(msg)
+		return errors.New(msg)
+	}))
 
 	err := closer.Close()
 	if err == nil || err.Error() != "third" {
 		t.Error("unexpected error", err)
 		return
-	} else if log.String() != "third->second->first->" {
-		t.Error("unexpected calling order of Close")
+	}
+
+	expected := []string{
+		"third",
+		"second",
+		"first",
+	}
+
+	if diff := cmp.Diff(expected, r.lines); diff != "" {
+		t.Error(diff)
 		return
 	}
-}
-
-type closePrinter struct {
-	log *bytes.Buffer
-	msg string
-}
-
-func (c *closePrinter) Close() error {
-	c.log.WriteString(c.msg + "->")
-	return errors.New(c.msg)
 }
