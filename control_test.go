@@ -43,14 +43,14 @@ func TestController(t *testing.T) {
 		return nil
 	}))
 
-	_ = ctl.Launch(WorkerLauncherFunc(func(ctx context.Context) (func(ctx context.Context), error) {
+	_ = ctl.Launch(Func(func(ctx context.Context) (func(ctx context.Context), error) {
 		r.record("launch worker 1")
 		return func(ctx context.Context) {
 			r.record("stop worker 1")
 		}, nil
 	}))
 
-	_ = ctl.Launch(WorkerLauncherFunc(func(ctx context.Context) (func(ctx context.Context), error) {
+	_ = ctl.Launch(Func(func(ctx context.Context) (func(ctx context.Context), error) {
 		r.record("launch worker 2")
 		return func(ctx context.Context) {
 			time.Sleep(time.Millisecond * 20)
@@ -66,7 +66,7 @@ func TestController(t *testing.T) {
 			return nil
 		}))
 
-		_ = ctl.Launch(WorkerLauncherFunc(func(ctx context.Context) (func(ctx context.Context), error) {
+		_ = ctl.Launch(Func(func(ctx context.Context) (func(ctx context.Context), error) {
 			r.record("launch worker 3")
 			return func(ctx context.Context) {
 				time.Sleep(time.Millisecond * 20)
@@ -74,7 +74,7 @@ func TestController(t *testing.T) {
 			}, nil
 		}))
 
-		_ = ctl.Launch(WorkerLauncherFunc(func(ctx context.Context) (func(ctx context.Context), error) {
+		_ = ctl.Launch(Func(func(ctx context.Context) (func(ctx context.Context), error) {
 			r.record("launch worker 4")
 			return func(ctx context.Context) {
 				r.record("stop worker 4")
@@ -85,7 +85,7 @@ func TestController(t *testing.T) {
 	{
 		ctl := ctl.Dependent()
 
-		_ = ctl.Launch(WorkerLauncherFunc(func(ctx context.Context) (func(ctx context.Context), error) {
+		_ = ctl.Launch(Func(func(ctx context.Context) (func(ctx context.Context), error) {
 			r.record("launch worker 5")
 			return func(ctx context.Context) {
 				time.Sleep(time.Millisecond * 10)
@@ -136,14 +136,14 @@ func TestController_Cancel(t *testing.T) {
 		return nil
 	}))
 
-	_ = ctl.Launch(WorkerLauncherFunc(func(ctx context.Context) (func(ctx context.Context), error) {
+	_ = ctl.Launch(Func(func(ctx context.Context) (func(ctx context.Context), error) {
 		r.record("launch worker 1")
 		return func(ctx context.Context) {
 			r.record("stop worker 1")
 		}, nil
 	}))
 
-	_ = ctl.Launch(WorkerLauncherFunc(func(ctx context.Context) (func(ctx context.Context), error) {
+	_ = ctl.Launch(Func(func(ctx context.Context) (func(ctx context.Context), error) {
 		r.record("launch worker 2")
 		return func(ctx context.Context) {
 			time.Sleep(time.Millisecond * 20)
@@ -159,7 +159,7 @@ func TestController_Cancel(t *testing.T) {
 			return nil
 		}))
 
-		_ = ctl.Launch(WorkerLauncherFunc(func(ctx context.Context) (func(ctx context.Context), error) {
+		_ = ctl.Launch(Func(func(ctx context.Context) (func(ctx context.Context), error) {
 			r.record("launch worker 3")
 			return func(ctx context.Context) {
 				time.Sleep(time.Millisecond * 20)
@@ -167,7 +167,7 @@ func TestController_Cancel(t *testing.T) {
 			}, nil
 		}))
 
-		_ = ctl.Launch(WorkerLauncherFunc(func(ctx context.Context) (func(ctx context.Context), error) {
+		_ = ctl.Launch(Func(func(ctx context.Context) (func(ctx context.Context), error) {
 			r.record("launch worker 4")
 			return func(ctx context.Context) {
 				r.record("stop worker 4")

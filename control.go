@@ -8,9 +8,10 @@ import (
 
 type (
 	Controller interface {
+		// Dependent creates new Controller depends on parent.
 		Dependent() Controller
 
-		// Launch register WorkerLauncher to Controller and call it.
+		// Launch registers WorkerLauncher to this Controller and call it.
 		// Return error when LaunchWorker cause error.
 		Launch(l WorkerLauncher) error
 
@@ -32,11 +33,11 @@ type (
 		LaunchWorker(ctx context.Context) (stop func(ctx context.Context), err error)
 	}
 
-	WorkerLauncherFunc func(ctx context.Context) (stop func(ctx context.Context), err error)
+	Func func(ctx context.Context) (stop func(ctx context.Context), err error)
 )
 
-func (l WorkerLauncherFunc) LaunchWorker(ctx context.Context) (stop func(ctx context.Context), err error) {
-	return l(ctx)
+func (f Func) LaunchWorker(ctx context.Context) (stop func(ctx context.Context), err error) {
+	return f(ctx)
 }
 
 type root struct {
