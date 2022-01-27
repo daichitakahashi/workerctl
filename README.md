@@ -19,6 +19,7 @@ import (
 
 func main() {
 	ctx := context.Background()
+	a := &workerctl.Aborter{}
 	ctl, shutdown := workerctl.New(ctx)
 
 	a.AbortOnError(func() (err error) {
@@ -63,6 +64,8 @@ func main() {
 	// Second, OneShotTaskRunner shutdown after all running task finished(2).
 	// Finally, logOutput will be closed(1).
 	select {
+	case <-a.Aborted():
+		log.Println("aborted")
 	case s := <-quit:
 		log.Println("signal received:", s)
 	}
