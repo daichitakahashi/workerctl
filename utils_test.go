@@ -51,7 +51,7 @@ func TestAborter(t *testing.T) {
 	}
 }
 
-func TestCloser_Close(t *testing.T) {
+func TestCloser(t *testing.T) {
 	r := recorder{t: t}
 
 	var closer Closer
@@ -71,10 +71,18 @@ func TestCloser_Close(t *testing.T) {
 		return errors.New(msg)
 	}))
 
-	err := closer.Close()
-	if err == nil || err.Error() != "third" {
-		t.Error("unexpected error", err)
+	err := closer.CloseOnError(nil)
+	if err != nil {
+		t.Errorf("unexpected error: %s", err)
 		return
+	} else if len(r.lines) > 0 {
+		t.Error("no close expected but not: ", r.lines)
+		return
+	}
+
+	err = closer.CloseOnError(errors.New("cause"))
+	if err == nil {
+		t.Error("error expected but not")
 	}
 
 	expected := []string{

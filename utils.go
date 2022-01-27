@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"sync"
+
+	"go.uber.org/multierr"
 )
 
 type RecoveredError struct {
@@ -68,9 +70,14 @@ func (c Closer) Close() (err error) {
 	last := len(c) - 1
 	for i := range c {
 		e := c[last-i].Close()
-		if e != nil && err == nil {
-			err = e
-		}
+		err = multierr.Append(err, e)
 	}
 	return
+}
+
+func (c Closer) CloseOnError(err error) error {
+	if err != nil {
+		return multierr.Append(err, c.Close())
+	}
+	return nil
 }
