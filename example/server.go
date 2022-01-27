@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
-	"net"
 	"net/http"
 
 	"github.com/daichitakahashi/workerctl"
@@ -48,9 +47,6 @@ func (s *Server) LaunchWorker(ctx context.Context) (func(context.Context), error
 	svr := &http.Server{
 		Addr:    ":8080",
 		Handler: mux,
-	}
-	svr.BaseContext = func(_ net.Listener) context.Context {
-		return ctx
 	}
 
 	go func() {
