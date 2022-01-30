@@ -1,3 +1,6 @@
+// Package workerctl implements controller of worker
+// アプリケーションを構成するワーカーの起動とシャットダウンをコントロールする。
+// ワーカーの依存関係を記述し、それらを適切な順序でシャットダウンさせることを目的としている。
 package workerctl
 
 import (
@@ -7,16 +10,24 @@ import (
 )
 
 type (
+	// Controller is core interface of workerctl package.
+	// ワーカーの起動のほか、現在の Controller に依存する Controller を生成することで、依存関係を構築することができる。
+	// シャットダウンでは派生した Controller が先にシャットダウンし、その後に派生元の Controller のシャットダウンが開始される。
+	// Controller と起動したワーカーは関連づけられ、 関連づけられた Controller がシャットダウンするフェーズになって初めてワーカーのシャットダウンが行われる。
+	// io.Closer を満たすリソースをバインドすることで、関連づけたワーカーのシャットダウン後にそれらを Close させることができる。
 	Controller interface {
 		// Dependent creates new Controller depends on parent.
+		// 派生した Controller が全てシャットダウンした後に、派生元の Controller はのシャットダウンが開始される。
 		Dependent() Controller
 
 		// Launch registers WorkerLauncher to this Controller and call it.
 		// Return error when LaunchWorker cause error.
+		// ワーカー起動時にエラーが発生した場合は、単にそのワーカーが起動しないだけで、 Controller の状態に影響を及ぼすことはない。
+		// エラーによって依存性の記述に失敗した場合、明示的にシャットダウンさせない限り、起動に成功したワーカーの終了とリソースの解放が行われることはない。
 		Launch(l WorkerLauncher) error
 
 		// Bind resource to Controller.
-		// After completion of controller's shutdown, resources are to be closed.
+		// After completion of controller's shutdown, resources will be closed.
 		Bind(rc io.Closer)
 
 		// Context returns Controller's Context.
@@ -24,18 +35,28 @@ type (
 
 		// WithContext returns a Controller with its context changed to ctx.
 		// The provided ctx must be non-nil.
+		// 主に context.WithValue との併用を想定している。
 		WithContext(ctx context.Context) Controller
 	}
 
+	// ShutdownFunc is a return value of New.
+	// ctx にタイムアウトをセットすることで、正常なシャットダウンの時間制限を課すことができる。
+	// `docker stop --timeout`, AWS ECSのタスク定義パラメータ`stopTimeout` 等と組み合わせて使用することを想定。
+	// 各ワーカーのシャットダウンに残された時間は、 context.Context.Deadline を参照のこと。
 	ShutdownFunc func(ctx context.Context) error
 
+	// WorkerLauncher is responsible for initializing the worker and returning its shutdown function.
+	// ワーカーの起動に失敗した場合には、起動中に初期化したリソースを全て解放したうえで error を返却することが期待されている。
 	WorkerLauncher interface {
 		LaunchWorker(ctx context.Context) (stop func(ctx context.Context), err error)
 	}
 
+	// Func is an easy way to define WorkerLauncher.
+	// Func(f) is a WorkerLauncher that calls f when passed to Controller.Launch.
 	Func func(ctx context.Context) (stop func(ctx context.Context), err error)
 )
 
+// LaunchWorker calls f(ctx).
 func (f Func) LaunchWorker(ctx context.Context) (stop func(ctx context.Context), err error) {
 	return f(ctx)
 }
