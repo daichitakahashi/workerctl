@@ -1,6 +1,7 @@
 package workerctl
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -94,5 +95,29 @@ func TestCloser(t *testing.T) {
 	if diff := cmp.Diff(expected, r.lines); diff != "" {
 		t.Error(diff)
 		return
+	}
+}
+
+func TestTransferContext(t *testing.T) {
+	holder, cancel := context.WithCancel(
+		context.WithValue(context.Background(), 0, "zero"),
+	)
+	defer cancel()
+
+	ctx := TransferContext(context.Background(), holder)
+
+	s, ok := ctx.Value(0).(string)
+	if !ok || s != "zero" {
+		t.Error(`expected to get string value "zero" with key '0'`)
+		return
+	}
+
+	cancel()
+	select {
+	case <-ctx.Done():
+		t.Error("unexpected cancellation")
+		return
+	default:
+		// ok
 	}
 }
