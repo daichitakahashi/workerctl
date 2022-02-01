@@ -88,10 +88,10 @@ type transferCtx struct {
 	values context.Context
 }
 
-// TransferContext transfers holder's values to new context based on ctx.
+// Transfer transfers holder's values to new context based on ctx.
 // It enables us to access attached values of holder via a new context.
 // Lifetime of new context is detached from lifetime of holder.
-func TransferContext(ctx, holder context.Context) context.Context {
+func Transfer(ctx, holder context.Context) context.Context {
 	return &transferCtx{
 		Context: ctx,
 		values:  holder,
@@ -104,4 +104,9 @@ func (c *transferCtx) Value(key interface{}) interface{} {
 		return v
 	}
 	return c.Context.Value(key)
+}
+
+// Transferred is shorthand of Transfer(context.Background(), holder).
+func Transferred(holder context.Context) context.Context {
+	return Transfer(context.Background(), holder)
 }

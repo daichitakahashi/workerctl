@@ -98,13 +98,13 @@ func TestCloser(t *testing.T) {
 	}
 }
 
-func TestTransferContext(t *testing.T) {
+func TestTransfer(t *testing.T) {
 	holder, cancel := context.WithCancel(
 		context.WithValue(context.Background(), 0, "zero"),
 	)
 	defer cancel()
 
-	ctx := TransferContext(context.Background(), holder)
+	ctx := Transfer(context.Background(), holder)
 
 	s, ok := ctx.Value(0).(string)
 	if !ok || s != "zero" {
