@@ -87,10 +87,11 @@ func New(ctx context.Context) (Controller, ShutdownFunc) {
 		shutdown:     make(chan struct{}),
 	}
 
+	// trap cancellation of Context or calling ShutdownFunc.
 	done := make(chan struct{})
 	go PanicSafe(func() error {
 		<-parentCtx.Done()
-		<-r.wait()
+		r.wait()
 		close(done)
 		return nil
 	})
@@ -184,17 +185,17 @@ type controller struct {
 	m            sync.Mutex
 }
 
-func (c *controller) wait() <-chan struct{} {
-	done := make(chan struct{})
-	go PanicSafe(func() error {
-		defer close(done)
-		c.dependentsWg.Wait()
-		close(c.shutdown)
-		c.wg.Wait()
-		_ = c.rcs.Close()
-		return nil
-	})
-	return done
+// to shut down Controller
+// 	1. wait all dependents shut down
+//	2. signal workers to start shut down
+//	3. wait all workers shut down
+//	4. close all bound resources
+func (c *controller) wait() {
+	c.dependentsWg.Wait()
+	close(c.shutdown)
+	c.wg.Wait()
+	_ = c.rcs.Close()
+	return
 }
 
 func (c *controller) Launch(l WorkerLauncher) error {
@@ -239,7 +240,7 @@ func (c *controller) Dependent() Controller {
 		defer c.dependentsWg.Done()
 		select {
 		case <-c.ctx.Done():
-			<-dependent.wait()
+			dependent.wait()
 		}
 		return nil
 	})
