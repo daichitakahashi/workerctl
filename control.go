@@ -137,10 +137,14 @@ func WithDefaultShutdownTimeout(ctx context.Context, timeout time.Duration) cont
 	})
 }
 
+// WithAbort set Aborter to new Context based on ctx.
+// Call Abort with returned new Context, set Aborter's Abort is called.
 func WithAbort(ctx context.Context, a *Aborter) context.Context {
 	return context.WithValue(ctx, abortKey, a)
 }
 
+// Abort invoke Aborter.Abort set by using WithAbort.
+// Workers can signal abort if they know Controller's context.
 func Abort(ctx context.Context) {
 	v := ctx.Value(abortKey)
 	if v != nil {
