@@ -8,6 +8,8 @@ import (
 	"io"
 	"sync"
 	"time"
+
+	"github.com/daichitakahashi/oncewait"
 )
 
 type (
@@ -67,8 +69,7 @@ type root struct {
 	*controller
 	shutdownCtx    context.Context
 	cancelShutdown context.CancelFunc
-	shutdownOnce   sync.Once
-	determined     chan struct{}
+	shutdownOnce   *oncewait.OnceWaiter
 }
 
 // New returns a new Controller which scope is bound to ctx and ShutdownFunc.
@@ -77,14 +78,14 @@ type root struct {
 func New(ctx context.Context) (Controller, ShutdownFunc) {
 	parentCtx, cancel := context.WithCancel(ctx)
 	r := &root{
-		determined: make(chan struct{}),
+		shutdownOnce: oncewait.New(),
 	}
 	r.controller = &controller{
-		root:         r,
-		ctx:          parentCtx,
-		dependentsWg: &sync.WaitGroup{},
-		wg:           &sync.WaitGroup{},
-		shutdown:     make(chan struct{}),
+		root:       r,
+		ctx:        parentCtx,
+		dependents: &sync.WaitGroup{},
+		workers:    &sync.WaitGroup{},
+		shutdown:   make(chan struct{}),
 	}
 
 	// trap cancellation of Context or calling ShutdownFunc.
@@ -153,6 +154,10 @@ func Abort(ctx context.Context) {
 	}
 }
 
+// Determine context of shutdown.
+// When ShutdownFunc is called, parameter 'ctx' is used.
+// However, when context of root Controller is canceled, we have no context, so we have to determine shutdown context.
+// Unless WithDefaultShutdownContext or WithDefaultShutdownTimeout is set, context.Background() is used.
 func (r *root) determineShutdownContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	r.shutdownOnce.Do(func() {
 		if ctx != nil {
@@ -167,22 +172,20 @@ func (r *root) determineShutdownContext(ctx context.Context) (context.Context, c
 				r.cancelShutdown = func() {}
 			}
 		}
-		close(r.determined)
 	})
-	<-r.determined
 	return r.shutdownCtx, r.cancelShutdown
 }
 
 var _ Controller = (*root)(nil)
 
 type controller struct {
-	root         *root
-	ctx          context.Context
-	dependentsWg *sync.WaitGroup
-	wg           *sync.WaitGroup
-	shutdown     chan struct{}
-	rcs          Closer
-	m            sync.Mutex
+	root       *root
+	ctx        context.Context
+	dependents *sync.WaitGroup
+	workers    *sync.WaitGroup
+	shutdown   chan struct{}
+	rcs        Closer
+	m          sync.Mutex
 }
 
 // to shut down Controller
@@ -191,18 +194,19 @@ type controller struct {
 //	3. wait all workers shut down
 //	4. close all bound resources
 func (c *controller) wait() {
-	c.dependentsWg.Wait()
+	c.dependents.Wait()
 	close(c.shutdown)
-	c.wg.Wait()
+	c.workers.Wait()
 	_ = c.rcs.Close()
 	return
 }
 
+// Launch launches worker, and set trap to catch signal of shutdown.
 func (c *controller) Launch(l WorkerLauncher) error {
 	c.m.Lock()
 	defer c.m.Unlock()
 
-	// prevent launch after Shutdown.
+	// prevent launch after shutdown.
 	select {
 	case <-c.ctx.Done():
 		return c.ctx.Err()
@@ -214,30 +218,30 @@ func (c *controller) Launch(l WorkerLauncher) error {
 		return err
 	}
 
-	c.wg.Add(1)
+	c.workers.Add(1)
 	go PanicSafe(func() error {
-		defer c.wg.Done()
-		select {
-		case <-c.shutdown:
-			ctx, _ := c.root.determineShutdownContext(nil)
-			stop(ctx)
-		}
+		defer c.workers.Done()
+		<-c.shutdown
+
+		ctx, _ := c.root.determineShutdownContext(nil)
+		stop(ctx)
 		return nil
 	})
 	return nil
 }
 
+// Dependent creates dependent Controller, and set trap to catch signal of shutdown.
 func (c *controller) Dependent() Controller {
 	dependent := &controller{
-		root:         c.root,
-		ctx:          c.ctx,
-		dependentsWg: &sync.WaitGroup{},
-		wg:           &sync.WaitGroup{},
-		shutdown:     make(chan struct{}),
+		root:       c.root,
+		ctx:        c.ctx,
+		dependents: &sync.WaitGroup{},
+		workers:    &sync.WaitGroup{},
+		shutdown:   make(chan struct{}),
 	}
-	c.dependentsWg.Add(1)
+	c.dependents.Add(1)
 	go PanicSafe(func() error {
-		defer c.dependentsWg.Done()
+		defer c.dependents.Done()
 		select {
 		case <-c.ctx.Done():
 			dependent.wait()
@@ -259,11 +263,11 @@ func (c *controller) Context() context.Context {
 
 func (c *controller) WithContext(ctx context.Context) Controller {
 	return &controller{
-		root:         c.root,
-		ctx:          ctx,
-		dependentsWg: c.dependentsWg,
-		wg:           c.wg,
-		rcs:          c.rcs,
+		root:       c.root,
+		ctx:        ctx,
+		dependents: c.dependents,
+		workers:    c.workers,
+		rcs:        c.rcs,
 	}
 }
 
