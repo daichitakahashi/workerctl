@@ -44,11 +44,16 @@ func TestAborter(t *testing.T) {
 	default:
 	}
 
-	a.AbortOnError(errors.New("abort"))
+	err := errors.New("abort")
+	a.AbortOnError(err)
 	select {
 	case <-a.Aborted():
 	default:
 		t.Error("abort expected but not")
+	}
+
+	if !errors.Is(a.Err(), err) {
+		t.Errorf("expected '%s' but got '%s'", err, a.Err())
 	}
 }
 
