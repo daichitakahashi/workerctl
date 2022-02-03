@@ -34,6 +34,7 @@ type Aborter struct {
 	ch     chan struct{}
 	mu     sync.Mutex
 	closed bool
+	err    error
 }
 
 func (a *Aborter) aborted() chan struct{} {
@@ -49,18 +50,29 @@ func (a *Aborter) Aborted() <-chan struct{} {
 	return a.aborted()
 }
 
-func (a *Aborter) Abort() {
+func (a *Aborter) abort(err error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if !a.closed {
 		close(a.aborted())
+		a.err = err
 	}
+}
+
+func (a *Aborter) Abort() {
+	a.abort(nil)
 }
 
 func (a *Aborter) AbortOnError(err error) {
 	if err != nil {
-		a.Abort()
+		a.abort(err)
 	}
+}
+
+func (a *Aborter) Err() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.err
 }
 
 // Closer :
