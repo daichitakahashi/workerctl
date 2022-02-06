@@ -55,6 +55,8 @@ func TestAborter(t *testing.T) {
 	if !errors.Is(a.Err(), err) {
 		t.Errorf("expected '%s' but got '%s'", err, a.Err())
 	}
+
+	a.Abort()
 }
 
 func TestCloser(t *testing.T) {
