@@ -89,10 +89,11 @@ func (a *Aborter) Err() error {
 	return a.err
 }
 
-// Closer :
+// Closer is a list of io.Closer.
+// By use this, we can handle error on init functions that contain operations opening resource.
 type Closer []io.Closer
 
-// Close :
+// Close closes all appended resources in a reverse order.
 func (c Closer) Close() (err error) {
 	last := len(c) - 1
 	for i := range c {
@@ -102,6 +103,7 @@ func (c Closer) Close() (err error) {
 	return
 }
 
+// CloseOnError closes all appended resources in a reverse order, only when err!=nil.
 func (c Closer) CloseOnError(err error) error {
 	if err != nil {
 		return multierr.Append(err, c.Close())
