@@ -3,6 +3,9 @@ package workerctl
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
+	"log"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -103,6 +106,50 @@ func TestCloser(t *testing.T) {
 		t.Error(diff)
 		return
 	}
+}
+
+func ExampleCloser() {
+	c, err := func() (c io.Closer, err error) {
+		var closer Closer
+		defer closer.CloseOnError(err) // close all opened resources if function returns error
+
+		first, err := openFile("first")
+		if err != nil {
+			return nil, err
+		}
+		closer = append(closer, first)
+
+		second, err := openFile("second")
+		if err != nil {
+			return nil, err
+		}
+		closer = append(closer, second)
+
+		third, err := openFile("third")
+		if err != nil {
+			return nil, err
+		}
+		closer = append(closer, third)
+
+		return closer, nil
+	}()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	c.Close()
+
+	// Output:
+	// close third
+	// close second
+	// close first
+}
+
+func openFile(s string) (io.Closer, error) {
+	return dummyCloser(func() error {
+		fmt.Println("close", s)
+		return nil
+	}), nil
 }
 
 func TestTransfer(t *testing.T) {
