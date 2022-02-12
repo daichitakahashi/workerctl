@@ -1,6 +1,5 @@
-// Package workerctl implements controller of worker
-// アプリケーションを構成するワーカーの起動とシャットダウンをコントロールする。
-// ワーカーの依存関係を記述し、それらを適切な順序でシャットダウンさせることを目的としている。
+// Package workerctl controls initialization and shutdown of workers that consists of application.
+// It aims to describe dependencies of them, and shutdown them in right order.
 package workerctl
 
 import (

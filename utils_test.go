@@ -7,8 +7,6 @@ import (
 	"io"
 	"log"
 	"testing"
-
-	"github.com/google/go-cmp/cmp"
 )
 
 func TestPanicSafe(t *testing.T) {
@@ -60,52 +58,6 @@ func TestAborter(t *testing.T) {
 	}
 
 	a.Abort()
-}
-
-func TestCloser(t *testing.T) {
-	r := recorder{t: t}
-
-	var closer Closer
-	closer = append(closer, dummyCloser(func() error {
-		msg := "first"
-		r.record(msg)
-		return errors.New(msg)
-	}))
-	closer = append(closer, dummyCloser(func() error {
-		msg := "second"
-		r.record(msg)
-		return errors.New(msg)
-	}))
-	closer = append(closer, dummyCloser(func() error {
-		msg := "third"
-		r.record(msg)
-		return errors.New(msg)
-	}))
-
-	err := closer.CloseOnError(nil)
-	if err != nil {
-		t.Errorf("unexpected error: %s", err)
-		return
-	} else if len(r.lines) > 0 {
-		t.Error("no close expected but not: ", r.lines)
-		return
-	}
-
-	err = closer.CloseOnError(errors.New("cause"))
-	if err == nil {
-		t.Error("error expected but not")
-	}
-
-	expected := []string{
-		"third",
-		"second",
-		"first",
-	}
-
-	if diff := cmp.Diff(expected, r.lines); diff != "" {
-		t.Error(diff)
-		return
-	}
 }
 
 func ExampleCloser() {
