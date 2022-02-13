@@ -13,19 +13,18 @@ import (
 
 type (
 	// Controller is core interface of workerctl package.
-	// ワーカーの起動のほか、現在の Controller に依存する Controller を生成することで、依存関係を構築することができる。
-	// シャットダウンでは派生した Controller が先にシャットダウンし、その後に派生元の Controller のシャットダウンが開始される。
-	// Controller と起動したワーカーは関連づけられ、 関連づけられた Controller がシャットダウンするフェーズになって初めてワーカーのシャットダウンが行われる。
-	// io.Closer を満たすリソースをバインドすることで、関連づけたワーカーのシャットダウン後にそれらを Close させることができる。
+	// Controller can launch workers and also create dependent Controller. It enables to describe dependencies between workers.
+	// In shutdown, the derived Controller shuts down first, and then the parent Controller starts shutting down.
+	// The launched workers are associated with the Controller, and start shutdown when the associated Controller is in the shutdown phase.
+	// By binding resources that implement io.Closer, we can close them at the end of the Controller shutdown.
 	Controller interface {
 		// Dependent creates new Controller depends on parent.
-		// 派生した Controller が全てシャットダウンした後に、派生元の Controller はのシャットダウンが開始される。
+		// After all derived Controller's shutdown completed, parent Controller's shutdown will start.
 		Dependent() Controller
 
 		// Launch registers WorkerLauncher to this Controller and call it.
 		// Return error when LaunchWorker cause error.
-		// ワーカー起動時にエラーが発生した場合は、単にそのワーカーが起動しないだけで、 Controller の状態に影響を及ぼすことはない。
-		// エラーによって依存性の記述に失敗した場合、明示的にシャットダウンさせない限り、起動に成功したワーカーの終了とリソースの解放が行われることはない。
+		// Failure of Launch makes no side effect on Controller's state.
 		Launch(l WorkerLauncher) error
 
 		// Bind resource to Controller.
@@ -37,7 +36,7 @@ type (
 
 		// WithContext returns a Controller with its context changed to ctx.
 		// The provided ctx must be non-nil.
-		// 主に context.WithValue との併用を想定している。
+		// It aims to set values to context with context.WithValue.
 		WithContext(ctx context.Context) Controller
 	}
 
