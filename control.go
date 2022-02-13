@@ -36,18 +36,18 @@ type (
 
 		// WithContext returns a Controller with its context changed to ctx.
 		// The provided ctx must be non-nil.
-		// It aims to set values to context with context.WithValue.
+		// It's assumed to set values to context with context.WithValue.
 		WithContext(ctx context.Context) Controller
 	}
 
-	// ShutdownFunc is a return value of New.
-	// ctx は各ワーカーのシャットダウン関数に渡されるため、タイムアウトをセットすることで正常なシャットダウンの時間制限を課すことができる。
-	// `docker stop --timeout`, AWS ECSのタスク定義パラメータ`stopTimeout` 等と組み合わせて使用することを想定。
-	// 各ワーカーのシャットダウンに残された時間は、 context.Context.Deadline を参照のこと。
+	// ShutdownFunc is a return value of New. It shuts down created Controller.
+	// Parameter ctx will be passed to shutdown functions of each worker, so we can set timeout using context.WithDeadline or context.WithTimeout.
+	// It's assumed tobe used in combination with configuration of container shutdown.
+	// For example, `docker stop --timeout` or task definition parameter `stopTimeout` on AWS ECS.
 	ShutdownFunc func(ctx context.Context) error
 
 	// WorkerLauncher is responsible for initializing the worker and returning its shutdown function.
-	// ワーカーの起動に失敗した場合には、起動中に初期化したリソースを全て解放したうえで error を返却することが期待されている。
+	// If the worker fails to launch, it is expected to release all the resources that were initialized during the startup and then return error.
 	WorkerLauncher interface {
 		LaunchWorker(ctx context.Context) (stop func(ctx context.Context), err error)
 	}
