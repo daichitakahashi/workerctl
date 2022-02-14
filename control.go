@@ -62,7 +62,7 @@ func (f Func) LaunchWorker(ctx context.Context) (stop func(ctx context.Context),
 	return f(ctx)
 }
 
-// rootは New で作成される Controller の正体で、派生する全てのコントローラーの大元となる。
+// A root Controller.
 type root struct {
 	*controller
 	shutdownCtx    context.Context
@@ -71,8 +71,9 @@ type root struct {
 }
 
 // New returns a new Controller which scope is bound to ctx and ShutdownFunc.
-// ctxがタイムアウトするかキャンセルされた場合のシャットダウン Context を設定したい場合には、
-// ctxに対して WithDefaultShutdownContext を使用する。
+// When ctx canceled, Controller starts shutdown. Also calling ShutdownFunc does the same.
+// However, cancellation of context.Context cannot set Context of shutdown.
+// If you need, use WithDefaultShutdownContext to ctx before New.
 func New(ctx context.Context) (Controller, ShutdownFunc) {
 	parentCtx, cancel := context.WithCancel(ctx)
 	r := &root{
@@ -88,12 +89,12 @@ func New(ctx context.Context) (Controller, ShutdownFunc) {
 
 	// trap cancellation of Context or calling ShutdownFunc.
 	done := make(chan struct{})
-	go PanicSafe(func() error {
+	go func() {
 		<-parentCtx.Done()
 		r.wait()
 		close(done)
-		return nil
-	})
+		return
+	}()
 
 	return r, func(ctx context.Context) error {
 		// determine shutdown context.
@@ -120,17 +121,19 @@ const (
 	abortKey
 )
 
-// WithDefaultShutdownContext は、ctxに Controller のシャットダウンで使用するデフォルトの Context を生成する関数をセットすることができる。
-// デフォルトのシャットダウンコンテクストは、 Controller の親コンテクストがタイムアウトするかキャンセルされた場合に使用され、
-// 明示的に ShutdownFunc をコールしてシャットダウンコンテクストが渡された場合はそちらを優先して使用する。
+// WithDefaultShutdownContext returns copy of parent which has a value of newShutdownCtx.
+// When Controller starts shutdown, if shutdown context is not specified, Controller calls newShutdownCtx and use return value as shutdown Context.
+// It is intended to be used when starting shutdown by canceling Context.
 func WithDefaultShutdownContext(ctx context.Context, newShutdownCtx func(ctx context.Context) context.Context) context.Context {
 	return context.WithValue(ctx, defaultShutdownKey, func(ctx context.Context) (context.Context, context.CancelFunc) {
 		return newShutdownCtx(ctx), func() {}
 	})
 }
 
-// WithDefaultShutdownTimeout は、ctxに Controller のシャットダウンで使用するデフォルトの Context にタイムアウトをセットするフックをセットすることができる。
-// WithDefaultShutdownContext と併用することはできない。
+// WithDefaultShutdownTimeout is a shorthand of
+//	WithDefaultShutdownContext(ctx, func(ctx context.Context) context.Context {
+//		return context.WithTimeout(ctx, timeout)
+//	})
 func WithDefaultShutdownTimeout(ctx context.Context, timeout time.Duration) context.Context {
 	return context.WithValue(ctx, defaultShutdownKey, func(ctx context.Context) (context.Context, context.CancelFunc) {
 		return context.WithTimeout(ctx, timeout)
@@ -217,14 +220,14 @@ func (c *controller) Launch(l WorkerLauncher) error {
 	}
 
 	c.workers.Add(1)
-	go PanicSafe(func() error {
+	go func() {
 		defer c.workers.Done()
 		<-c.shutdown
 
 		ctx, _ := c.root.determineShutdownContext(nil)
 		stop(ctx)
-		return nil
-	})
+		return
+	}()
 	return nil
 }
 
@@ -238,14 +241,14 @@ func (c *controller) Dependent() Controller {
 		shutdown:   make(chan struct{}),
 	}
 	c.dependents.Add(1)
-	go PanicSafe(func() error {
+	go func() {
 		defer c.dependents.Done()
 		select {
 		case <-c.ctx.Done():
 			dependent.wait()
 		}
-		return nil
-	})
+		return
+	}()
 	return dependent
 }
 
