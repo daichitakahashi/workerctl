@@ -134,7 +134,7 @@ func (c *transferCtx) Value(key interface{}) interface{} {
 	return c.Context.Value(key)
 }
 
-// Transferred is shorthand of Transfer(context.Background(), holder).
+// Transferred is a shorthand of Transfer(context.Background(), holder).
 func Transferred(holder context.Context) context.Context {
 	return Transfer(context.Background(), holder)
 }
