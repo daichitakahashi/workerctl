@@ -1,7 +1,6 @@
 package workerctl
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"sync"
@@ -109,32 +108,4 @@ func (c Closer) CloseOnError(err error) error {
 		return multierr.Append(err, c.Close())
 	}
 	return nil
-}
-
-type transferCtx struct {
-	context.Context
-	values context.Context
-}
-
-// Transfer transfers holder's values to new context based on ctx.
-// It enables us to access attached values of holder via a new context.
-// Lifetime of new context is detached from lifetime of holder.
-func Transfer(ctx, holder context.Context) context.Context {
-	return &transferCtx{
-		Context: ctx,
-		values:  holder,
-	}
-}
-
-func (c *transferCtx) Value(key interface{}) interface{} {
-	v := c.values.Value(key)
-	if v != nil {
-		return v
-	}
-	return c.Context.Value(key)
-}
-
-// Transferred is a shorthand of Transfer(context.Background(), holder).
-func Transferred(holder context.Context) context.Context {
-	return Transfer(context.Background(), holder)
 }
