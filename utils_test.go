@@ -1,17 +1,18 @@
-package workerctl
+package workerctl_test
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"testing"
+
+	"github.com/daichitakahashi/workerctl"
 )
 
 func TestPanicSafe(t *testing.T) {
 	e := errors.New("error")
-	err := PanicSafe(func() error {
+	err := workerctl.PanicSafe(func() error {
 		return e
 	})
 	if err != e {
@@ -19,11 +20,11 @@ func TestPanicSafe(t *testing.T) {
 		return
 	}
 
-	err = PanicSafe(func() error {
+	err = workerctl.PanicSafe(func() error {
 		panic("panic")
 		return e
 	})
-	if r, ok := err.(*RecoveredError); !ok {
+	if r, ok := err.(*workerctl.RecoveredError); !ok {
 		t.Error("recovered v expected but not")
 	} else if r.Error() != `recovered: panic` {
 		t.Error("unknown recovered value")
@@ -31,7 +32,7 @@ func TestPanicSafe(t *testing.T) {
 }
 
 func TestAborter(t *testing.T) {
-	var a Aborter
+	var a workerctl.Aborter
 	select {
 	case <-a.Aborted():
 		t.Error("unexpected abort")
@@ -62,7 +63,7 @@ func TestAborter(t *testing.T) {
 
 func ExampleCloser() {
 	c, err := func() (c io.Closer, err error) {
-		var closer Closer
+		var closer workerctl.Closer
 		defer closer.CloseOnError(err) // close all opened resources if function returns error
 
 		first, err := openFile("first")
@@ -102,28 +103,4 @@ func openFile(s string) (io.Closer, error) {
 		fmt.Println("close", s)
 		return nil
 	}), nil
-}
-
-func TestTransfer(t *testing.T) {
-	holder, cancel := context.WithCancel(
-		context.WithValue(context.Background(), 0, "zero"),
-	)
-	defer cancel()
-
-	ctx := Transfer(context.Background(), holder)
-
-	s, ok := ctx.Value(0).(string)
-	if !ok || s != "zero" {
-		t.Error(`expected to get string value "zero" with key '0'`)
-		return
-	}
-
-	cancel()
-	select {
-	case <-ctx.Done():
-		t.Error("unexpected cancellation")
-		return
-	default:
-		// ok
-	}
 }

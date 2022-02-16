@@ -1,14 +1,16 @@
-package workerctl
+package workerctl_test
 
 import (
 	"context"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/daichitakahashi/workerctl"
 )
 
 func TestJobRunner(t *testing.T) {
-	var runner JobRunner
+	var runner workerctl.JobRunner
 	var completed int32
 
 	runNum := int32(50)
@@ -31,7 +33,7 @@ func TestJobRunner(t *testing.T) {
 
 func TestJobRunner_Panic(t *testing.T) {
 	t.Run("without PanicHandler", func(t *testing.T) {
-		var runner JobRunner
+		var runner workerctl.JobRunner
 		defer func() {
 			rvr := recover()
 			if rvr == nil {
@@ -44,7 +46,7 @@ func TestJobRunner_Panic(t *testing.T) {
 	})
 
 	t.Run("without PanicHandler", func(t *testing.T) {
-		var runner JobRunner
+		var runner workerctl.JobRunner
 		defer func() {
 			rvr := recover()
 			if rvr != nil {
