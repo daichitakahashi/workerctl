@@ -16,7 +16,7 @@ func main() {
 	a := &workerctl.Aborter{}
 	ctx = workerctl.WithAbort(ctx, a)
 
-	ctl, shutdown := workerctl.New(ctx)
+	ctl, shutdown := workerctl.New()
 
 	a.AbortOnError(func() (err error) {
 		// 1. Init shared resource and bind to this Controller.
@@ -31,7 +31,7 @@ func main() {
 		oneShot := &OneShotTaskRunner{
 			Writer: logOutput,
 		}
-		err = ctl.Launch(oneShot)
+		err = ctl.Launch(ctx, oneShot)
 		if err != nil {
 			return err
 		}
@@ -44,7 +44,7 @@ func main() {
 				OneShot: oneShot,
 				Writer:  logOutput,
 			}
-			err := ctl.Launch(server)
+			err := ctl.Launch(ctx, server)
 			if err != nil {
 				return err
 			}

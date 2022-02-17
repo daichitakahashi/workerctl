@@ -59,14 +59,11 @@ type root struct {
 	shutdownCtx context.Context
 }
 
-// New returns a new Controller which scope is bound to ctx and ShutdownFunc.
-// When ctx canceled, Controller starts shutdown. Also calling ShutdownFunc does the same.
-// However, cancellation of context.Context cannot set Context of shutdown.
-// If you need, use WithDefaultShutdownContext to ctx before New.
+// New returns a new Controller which can be shut down by calling ShutdownFunc.
 func New() (Controller, ShutdownFunc) {
-	hook := make(chan struct{})
+	trap := make(chan struct{})
 	r := &root{
-		hook: hook,
+		hook: trap,
 	}
 	r.controller = &controller{
 		root:     r,
@@ -76,7 +73,7 @@ func New() (Controller, ShutdownFunc) {
 	// trap calling ShutdownFunc
 	done := make(chan struct{})
 	go func() {
-		<-hook
+		<-trap
 		r.wait()
 		close(done)
 		return
@@ -87,7 +84,7 @@ func New() (Controller, ShutdownFunc) {
 		r.shutdownCtx = ctx
 
 		// hook cancellation
-		close(hook)
+		close(trap)
 
 		select {
 		case <-r.shutdownCtx.Done():
@@ -96,24 +93,6 @@ func New() (Controller, ShutdownFunc) {
 		}
 		return nil
 	}
-}
-
-type key int8
-
-const (
-	abortKey key = iota + 1
-)
-
-// WithAbort set Aborter to new Context based on ctx.
-// Call Abort with returned new Context, set Aborter's Abort is called.
-func WithAbort(ctx context.Context, a *Aborter) context.Context {
-	return context.WithValue(ctx, abortKey, a)
-}
-
-// Abort invoke Aborter.Abort set by using WithAbort.
-// Workers can signal abort if they know Controller's context.
-func Abort(ctx context.Context) {
-	ctx.Value(abortKey).(*Aborter).Abort()
 }
 
 var _ Controller = (*root)(nil)
@@ -149,6 +128,8 @@ func (c *controller) Launch(ctx context.Context, l WorkerLauncher) error {
 	select {
 	case <-c.root.hook:
 		return errors.New("shutdown already started")
+	case <-ctx.Done():
+		return ctx.Err()
 	default:
 	}
 
