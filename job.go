@@ -3,13 +3,16 @@ package workerctl
 import (
 	"context"
 	"sync"
+	"sync/atomic"
+	"unsafe"
 )
 
 // JobRunner is one shot job executor.
 // Execute job using Run or Go, and Wait for all running jobs are finished.
 // This enables us to perform shutdown of background job gracefully, which executed outside request-response scope.
 type JobRunner struct {
-	wg sync.WaitGroup
+	wg      sync.WaitGroup
+	waiting unsafe.Pointer
 
 	// If PanicHandler is set, panic will be recovered and passed as v.
 	// If not set, JobRunner doesn't recover.
@@ -45,15 +48,21 @@ func (r *JobRunner) run(fn func()) {
 // Wait for all running job finished.
 // If ctx is cancelled or timed out, waiting is also cancelled.
 func (r *JobRunner) Wait(ctx context.Context) error {
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		r.wg.Wait()
-	}()
+	waiting := make(chan struct{})
+	if atomic.CompareAndSwapPointer(&r.waiting, unsafe.Pointer(nil), unsafe.Pointer(&waiting)) {
+		go func() {
+			defer close(waiting)
+			r.wg.Wait()
+			atomic.StorePointer(&r.waiting, unsafe.Pointer(nil))
+		}()
+	} else {
+		waiting = *(*chan struct{})(atomic.LoadPointer(&r.waiting))
+	}
+
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-done:
+	case <-waiting:
 		return nil
 	}
 }

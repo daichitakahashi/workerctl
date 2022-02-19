@@ -2,6 +2,7 @@ package workerctl_test
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -67,4 +68,36 @@ func TestJobRunner_Panic(t *testing.T) {
 			t.Fatal("panic expected but not")
 		}
 	})
+}
+
+func TestJobRunner_Wait(t *testing.T) {
+	var runner workerctl.JobRunner
+
+	runner.Go(func() {
+		time.Sleep(time.Millisecond * 500)
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*300)
+	defer cancel()
+	err := runner.Wait(ctx)
+	if err == nil {
+		t.Fatal("error expected but not")
+	} else if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	ctx2, cancel2 := context.WithTimeout(context.Background(), time.Millisecond*300)
+	defer cancel2()
+	err = runner.Wait(ctx2)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	runner.Go(func() {
+		time.Sleep(time.Millisecond * 500)
+	})
+	err = runner.Wait(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
 }
