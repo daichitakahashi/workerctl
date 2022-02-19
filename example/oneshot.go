@@ -36,13 +36,20 @@ func (o *OneShotTaskRunner) LaunchWorker(_ context.Context) (func(context.Contex
 }
 
 func (o *OneShotTaskRunner) Report(message string) {
-	o.r.Run(func() {
+	o.r.Run(context.Background(), func(ctx context.Context) {
 		var err error
 		defer func() {
 			if err != nil {
 				_, _ = fmt.Fprintf(o.Writer, "OneShotTaskRunner.Report: %s\n", err)
 			}
 		}()
+
+		select {
+		case <-ctx.Done():
+			err = ctx.Err()
+			return
+		default:
+		}
 
 		_, err = o.conn.Write([]byte("ping"))
 		if err != nil {
