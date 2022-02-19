@@ -16,7 +16,7 @@ func TestJobRunner(t *testing.T) {
 
 	runNum := int32(50)
 	for i := int32(0); i < runNum; i++ {
-		runner.Go(func() {
+		runner.Go(context.Background(), func(ctx context.Context) {
 			time.Sleep(time.Millisecond * 20 * time.Duration(i+1))
 			atomic.AddInt32(&completed, 1)
 		})
@@ -41,7 +41,7 @@ func TestJobRunner_Panic(t *testing.T) {
 				t.Fatal("panic expected but not")
 			}
 		}()
-		runner.Run(func() {
+		runner.Run(context.Background(), func(ctx context.Context) {
 			panic("panic!")
 		})
 	})
@@ -60,7 +60,7 @@ func TestJobRunner_Panic(t *testing.T) {
 			recovered = v
 		}
 
-		runner.Run(func() {
+		runner.Run(context.Background(), func(ctx context.Context) {
 			panic("panic!")
 		})
 
@@ -73,7 +73,7 @@ func TestJobRunner_Panic(t *testing.T) {
 func TestJobRunner_Wait(t *testing.T) {
 	var runner workerctl.JobRunner
 
-	runner.Go(func() {
+	runner.Go(context.Background(), func(ctx context.Context) {
 		time.Sleep(time.Millisecond * 500)
 	})
 
@@ -93,7 +93,7 @@ func TestJobRunner_Wait(t *testing.T) {
 		t.Fatalf("unexpected error: %s", err)
 	}
 
-	runner.Go(func() {
+	runner.Go(context.Background(), func(ctx3 context.Context) {
 		time.Sleep(time.Millisecond * 500)
 	})
 	err = runner.Wait(context.Background())

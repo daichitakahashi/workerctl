@@ -20,18 +20,18 @@ type JobRunner struct {
 }
 
 // Run executes job.
-func (r *JobRunner) Run(fn func()) {
+func (r *JobRunner) Run(ctx context.Context, fn func(context.Context)) {
 	r.wg.Add(1)
-	r.run(fn)
+	r.run(ctx, fn)
 }
 
 // Go spawns goroutine and executes job.
-func (r *JobRunner) Go(fn func()) {
+func (r *JobRunner) Go(ctx context.Context, fn func(context.Context)) {
 	r.wg.Add(1)
-	go r.run(fn)
+	go r.run(ctx, fn)
 }
 
-func (r *JobRunner) run(fn func()) {
+func (r *JobRunner) run(ctx context.Context, fn func(ctx context.Context)) {
 	defer func() {
 		r.wg.Done()
 		// if PanicHandler is not nil, recover panic and pass recovered value
@@ -42,7 +42,7 @@ func (r *JobRunner) run(fn func()) {
 			}
 		}
 	}()
-	fn()
+	fn(ctx)
 }
 
 // Wait for all running job finished.
